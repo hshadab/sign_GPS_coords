@@ -1,8 +1,8 @@
 use hex::{FromHex, ToHex}; // to pretty print hash
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::env;
 use std::time::SystemTime;
+use std::{env, fs};
 
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use sha2::{self, Digest};
@@ -92,6 +92,7 @@ fn main() {
     /*
      * Here the SignedPosition object would be sent to another party
      */
+    fs::write("out/out.json", &signed_payload).expect("Unable to write file");
 
     println!("Upon receiving the SignedPosition object, the other party would deserialize it and verify the signature\n");
     // deserialize SignedPosition object
