@@ -6,3 +6,5 @@ without serde_json:     14619376
     and secp256k1:          5337
 
 without secp256k1:        428270
+
+WIth minisign instead of secp256k1: WORSE
