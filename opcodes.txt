@@ -1,0 +1,8 @@
+With everything:        14672021
+
+without serde_json:     14619376
+    and sha2:           14477436
+    and hex:            14243377
+    and secp256k1:          5337
+
+without secp256k1:        428270
