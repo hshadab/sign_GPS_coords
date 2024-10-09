@@ -1,6 +1,0 @@
-serde_json: 1.3MB
-sha2:       0.4MB
-hex:          0MB
-serde:        0MB
-secp256k1   0.6MB
-rest:       1.6MB
