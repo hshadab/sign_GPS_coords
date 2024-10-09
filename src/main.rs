@@ -7,8 +7,10 @@ use ff::Field;
 use zk_engine::nova::{
     provider::{PallasEngine, VestaEngine},
     traits::{circuit::TrivialCircuit, snark::default_ck_hint, Engine},
-    PublicParams, RecursiveSNARK,
+    CompressedSNARK, PublicParams, RecursiveSNARK,
 };
+
+use halo2curves::bn256::Bn256;
 
 use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
 use sha2::{self, Digest};
@@ -124,6 +126,22 @@ fn main() {
 
     let is_valid = verify_signature(&public_key, &signature_bytes, &hash);
     println!("Signature is valid: {:?}", is_valid);
+
+    /*
+     * CREATING COMPRESSED PROOF
+     */
+
+    type EE1 = zk_engine::nova::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
+    type EE2 = zk_engine::nova::provider::ipa_pc::EvaluationEngine<E2>;
+    type S1 = zk_engine::nova::spartan::ppsnark::RelaxedR1CSSNARK<E1, EE1>; // preprocessing SNARK
+    type S2 = zk_engine::nova::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>; // preprocessing SNARK
+
+    let (pk, vk) = CompressedSNARK::<_, S1, S2>::setup(&pp).unwrap();
+
+    let res = CompressedSNARK::<_, S1, S2>::prove(&pp, &pk, &recursive_snark);
+    let compressed_snark = res.unwrap();
+
+    let res = compressed_snark.verify(&vk, 1, &z0_primary, &z0_secondary);
 }
 
 fn hash_position(position: &Position) -> Vec<u8> {
