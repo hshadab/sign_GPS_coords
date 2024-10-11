@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/DIDComm_Server.dir/main.c.o -o DIDComm_Server  -Wl,-rpath,/home/antoine/Documents/projets/Novanet/exampleIoTeX/signDataRust/device_register/src/build/core core/libioConnectCore.so
