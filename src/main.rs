@@ -7,11 +7,7 @@ use ff::Field;
 use zk_engine::nova::{
     provider::{ipa_pc, PallasEngine, VestaEngine},
     spartan::{ppsnark, snark},
-    traits::{
-        circuit::TrivialCircuit,
-        snark::{default_ck_hint, RelaxedR1CSSNARKTrait},
-        Engine,
-    },
+    traits::{circuit::TrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine},
     CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 
@@ -24,13 +20,6 @@ struct Position {
     latitude: f64,
     longitude: f64,
     timestamp: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SignedPosition {
-    position: Position,
-    signature: String,
-    public_key: String,
 }
 
 type E1 = PallasEngine;
