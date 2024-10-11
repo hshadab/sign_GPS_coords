@@ -5,12 +5,15 @@ use std::time::SystemTime;
 
 use ff::Field;
 use zk_engine::nova::{
-    provider::{PallasEngine, VestaEngine},
-    traits::{circuit::TrivialCircuit, snark::default_ck_hint, Engine},
+    provider::{ipa_pc, PallasEngine, VestaEngine},
+    spartan::{ppsnark, snark},
+    traits::{
+        circuit::TrivialCircuit,
+        snark::{default_ck_hint, RelaxedR1CSSNARKTrait},
+        Engine,
+    },
     CompressedSNARK, PublicParams, RecursiveSNARK,
 };
-
-use halo2curves::bn256::Bn256;
 
 use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
 use sha2::{self, Digest};
@@ -32,6 +35,10 @@ struct SignedPosition {
 
 type E1 = PallasEngine;
 type E2 = VestaEngine;
+type EE1 = ipa_pc::EvaluationEngine<E1>;
+type EE2 = ipa_pc::EvaluationEngine<E2>;
+type S1 = ppsnark::RelaxedR1CSSNARK<E1, EE1>;
+type S2 = snark::RelaxedR1CSSNARK<E2, EE2>;
 
 fn main() {
     // Simulate inputs
@@ -73,8 +80,8 @@ fn main() {
     let pp = PublicParams::<E1>::setup(
         &circuit_primary,
         &circuit_secondary,
-        &*default_ck_hint(),
-        &*default_ck_hint(),
+        &*S1::ck_floor(),
+        &*S2::ck_floor(),
     )
     .unwrap();
 
@@ -109,6 +116,17 @@ fn main() {
     println!("RecursiveSNARK::verify: {:?}", res.is_ok());
 
     /*
+     * COMPRESS PROOF
+     */
+    println!("Compressing...");
+    let (pk, vk) = CompressedSNARK::<E1, S1, S2>::setup(&pp).unwrap();
+    let snark = CompressedSNARK::prove(&pp, &pk, &recursive_snark).unwrap();
+
+    snark
+        .verify(&vk, recursive_snark.num_steps(), &z0_primary, &z0_secondary)
+        .unwrap();
+
+    /*
      * RECOVERING SIGNATURE
      */
 
@@ -126,22 +144,6 @@ fn main() {
 
     let is_valid = verify_signature(&public_key, &signature_bytes, &hash);
     println!("Signature is valid: {:?}", is_valid);
-
-    /*
-     * CREATING COMPRESSED PROOF
-     */
-
-    type EE1 = zk_engine::nova::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
-    type EE2 = zk_engine::nova::provider::ipa_pc::EvaluationEngine<E2>;
-    type S1 = zk_engine::nova::spartan::ppsnark::RelaxedR1CSSNARK<E1, EE1>; // preprocessing SNARK
-    type S2 = zk_engine::nova::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>; // preprocessing SNARK
-
-    let (pk, vk) = CompressedSNARK::<_, S1, S2>::setup(&pp).unwrap();
-
-    let res = CompressedSNARK::<_, S1, S2>::prove(&pp, &pk, &recursive_snark);
-    let compressed_snark = res.unwrap();
-
-    let res = compressed_snark.verify(&vk, 1, &z0_primary, &z0_secondary);
 }
 
 fn hash_position(position: &Position) -> Vec<u8> {
