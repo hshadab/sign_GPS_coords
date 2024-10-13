@@ -4,13 +4,15 @@ project (DIDComm_Server)
 
 option (COMPILE_LIB_SET "Set ioConnectCore compile to a Lib" ON)
 
-include_directories(./core/src)
+include_directories(./libraries/dotenv-c/src ./libraries/core/src)
 
 add_compile_options(-g -O0)
 
-add_executable(DIDComm_Server main.c) 
+add_executable(DIDComm_Server main.c ./libraries/dotenv-c/src/dotenv.c) 
 
-add_subdirectory(./core)
+add_subdirectory(./libraries/core)
+
+add_subdirectory(./libraries/dotenv-c)
 
 if (COMPILE_LIB_SET)
     target_link_libraries(DIDComm_Server ioConnectCore)

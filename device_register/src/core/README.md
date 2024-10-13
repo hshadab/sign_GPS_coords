@@ -1,1 +1,0 @@
-# DevicConnect Core
