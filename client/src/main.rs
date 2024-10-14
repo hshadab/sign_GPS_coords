@@ -47,7 +47,10 @@ async fn main() -> Result<()> {
     let secret_key_hex = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     let secret_key = hex::decode(secret_key_hex).unwrap();
 
+    // Generated from the secret_key
     let public_key_hex = "034646ae5047316b4230d0086c8acec687f00b1cd9d1dc634f6cb358ac0a9a8fff";
+    println!("Public key: {:?}", hex::decode(public_key_hex).unwrap());
+
     let public_key = deser_pubkey(public_key_hex);
 
     let latitude = 48.8566;

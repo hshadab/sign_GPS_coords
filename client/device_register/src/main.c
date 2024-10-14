@@ -61,7 +61,7 @@ int main(void)
 
     unsigned int peerSignKeyID;
 
-    JWK *peerSignJWK = iotex_jwk_generate_by_secret(secret, 32, JWKTYPE_EC, JWK_SUPPORT_KEY_ALG_P256,
+    JWK *peerSignJWK = iotex_jwk_generate_by_secret(secret, 32, JWKTYPE_EC, JWK_SUPPORT_KEY_ALG_K256,
                                                     IOTEX_JWK_LIFETIME_VOLATILE,
                                                     PSA_KEY_USAGE_SIGN_HASH | PSA_KEY_USAGE_VERIFY_HASH | PSA_KEY_USAGE_EXPORT,
                                                     PSA_ALG_ECDSA(PSA_ALG_SHA_256),

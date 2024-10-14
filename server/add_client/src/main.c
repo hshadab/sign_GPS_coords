@@ -16,7 +16,6 @@ int main(int argc, char **argv)
     }
 
     char *did_doc = argv[1];
-    printf("DIDDoc: %s\n", did_doc);
 
     DIDDoc *parsed_diddoc = iotex_diddoc_parse(did_doc);
     if (parsed_diddoc == NULL)
@@ -32,5 +31,17 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    printf("Verification Method: %s\n", vm_info->id);
+    JWK *jwk = vm_info->pk_u.jwk;
+
+    char public_key[64] = {0};
+    size_t outlen = 0;
+
+    int ret = iotex_jwk_get_pubkey_from_jwk(jwk, public_key, &outlen);
+    if (ret != 0)
+    {
+        printf("Failed to get public key\n");
+        return 1;
+    }
+
+    printf("%s", public_key);
 }

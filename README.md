@@ -23,7 +23,7 @@ Copy `core` directory from `device_register/ioConnect` to `device_register/src`.
 in `device_register/src/core/src/include/config`, remove `autoconfig.h` and rename `autoconfig_linux.h` to `autoconfig.h`
 
 ```
-cd device_register/ioConnect/src
+cd device_register/src
 ```
 
 ```
@@ -34,7 +34,7 @@ mkdir build && cd build
 cmake .. && make && ./DIDComm_server
 ```
 
-Running `./DIDComm_Server` creates a DIDDoc using our secret key and stores it in a file for later use.
+Running `./DIDComm_Server` creates a DIDDoc using our secret key and stores it in a file (`peerDIDDoc.json` at `client/device_register`) for later use.
 
 ## Setting up server
 
