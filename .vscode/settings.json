@@ -1,6 +1,0 @@
-{
-  "files.associations": {
-    "deviceconnect_core.h": "c",
-    "unistd.h": "c"
-  }
-}
