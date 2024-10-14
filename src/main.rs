@@ -1,10 +1,19 @@
-use hex::{FromHex, ToHex}; // to pretty print hash
+use hex::{FromHex, ToHex};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::time::SystemTime;
 
-use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
+use ff::Field;
+use zk_engine::nova::{
+    provider::{ipa_pc, PallasEngine, VestaEngine},
+    spartan::{ppsnark, snark},
+    traits::{circuit::TrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine},
+    CompressedSNARK, PublicParams, RecursiveSNARK,
+};
+
+use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
 use sha2::{self, Digest};
+use zk_engine::precompiles::signing::SigningCircuit;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Position {
@@ -13,105 +22,123 @@ struct Position {
     timestamp: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct SignedPosition {
-    position: Position,
-    signature: String,
-    public_key: String,
-}
+type E1 = PallasEngine;
+type E2 = VestaEngine;
+type EE1 = ipa_pc::EvaluationEngine<E1>;
+type EE2 = ipa_pc::EvaluationEngine<E2>;
+type S1 = ppsnark::RelaxedR1CSSNARK<E1, EE1>;
+type S2 = snark::RelaxedR1CSSNARK<E2, EE2>;
 
 fn main() {
-    // build SignedPosition object, to be sent
-    let signed_position = sign_coordinates(
-        37.7749,
-        -122.4194,
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    );
-    println!(
-        "Built a SignedPosition object, containing the position object, signature and public key\nThis object can be serialized and sent to other party for verification\n"
-    );
-    println!("SignedPosition: {:#?}\n", signed_position);
+    // Simulate inputs
+    let secret_key_hex = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let secret_key = hex::decode(secret_key_hex).unwrap();
 
-    // serialize SignedPosition object
-    let signed_payload = serde_json::to_string(&signed_position).expect("JSON serialization");
+    let public_key_hex = "034646ae5047316b4230d0086c8acec687f00b1cd9d1dc634f6cb358ac0a9a8fff";
+    let public_key = deser_pubkey(public_key_hex);
 
-    /*
-     * Here the SignedPosition object would be sent to another party
-     */
+    let latitude = 48.8566;
+    let longitude = 2.3522;
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
-    println!("Upon receiving the SignedPosition object, the other party would deserialize it and verify the signature\n");
-    // deserialize SignedPosition object
-    let deserialized_signed_position: SignedPosition =
-        serde_json::from_str(&signed_payload).expect("JSON deserialization");
-
-    let recovered_position = deserialized_signed_position.position;
-    let recovered_ser_sig = deserialized_signed_position.signature;
-
-    // recover signature
-    let recovered_sig = secp256k1::ecdsa::Signature::from_compact(
-        <[u8; 64]>::from_hex(&recovered_ser_sig).unwrap().as_ref(),
-    )
-    .expect("64 bytes");
-    println!("Recovered signature: {:?}", recovered_sig);
-
-    // recover public key
-    let recovered_ser_pub_key = deserialized_signed_position.public_key;
-    let recovered_pub_key = deser_pubkey(&recovered_ser_pub_key);
-
-    // hash recovered position object
-    println!("The position object is recovered and a hash of it is computed\nThen the signature is verified using the recovered hash and public key\n");
-    let recovered_payload = serde_json::to_string(&recovered_position).expect("JSON serialization");
-    let recovered_result = hash_message(&recovered_payload);
-    let recieved_payload_hash = recovered_result.as_ref();
-
-    // verify signature
-    let is_valid = verify_signature(&recovered_pub_key, &recovered_sig, recieved_payload_hash);
-    println!("Signature is valid: {}", is_valid);
-}
-
-#[no_mangle]
-fn sign_coordinates(latitude: f64, longitude: f64, timestamp: u64) {
-    // convert hex encoded secret key to bytes
-    let secret_key = "3132333435363738393031323334353637383930313233343536373839303131";
-    let secret_key_bytes = hex::decode(&secret_key).expect("Invalid hex");
-    let secret_key_slice = secret_key_bytes.as_slice();
-
+    // build position object
     let position = Position {
         latitude,
         longitude,
         timestamp,
     };
 
-    // serialize position for hashing purpose
-    let payload = serde_json::to_string(&position).expect("JSON serialization");
+    let hash = hash_position(&position);
 
-    // hash payload
-    let result = hash_message(&payload);
-    let hash = result.as_ref();
+    /*
+     * BUILDING THE PUBLIC PARAMETERS
+     */
 
-    // sign hash
-    let (secret_key, public_key) = create_key_pair_from_bytes(secret_key_slice);
-    let sig = sign_hash_slice(&secret_key, hash);
+    // create signing circuit
+    type C1 = SigningCircuit<<E1 as Engine>::Scalar>;
+    type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
-    // serialize signature and public key - needed as ecdsa::Signature does not implement Serialize
-    let serialized_signature = sig.serialize_compact().encode_hex::<String>();
-    let serialized_public_key = public_key.serialize().encode_hex::<String>();
+    let circuit_primary = C1::new(hash.clone(), secret_key);
+    let circuit_secondary = C2::default();
 
-    SignedPosition {
-        position,
-        signature: serialized_signature,
-        public_key: serialized_public_key,
-    };
+    // produce public parameters
+    println!("Producing public parameters...");
+    let pp = PublicParams::<E1>::setup(
+        &circuit_primary,
+        &circuit_secondary,
+        &*S1::ck_floor(),
+        &*S2::ck_floor(),
+    )
+    .unwrap();
+
+    /*
+     * PROVING CODE EXECUTION
+     */
+    let z0_primary = [<E1 as Engine>::Scalar::ZERO; 4];
+    let z0_secondary = [<E2 as Engine>::Scalar::ZERO];
+
+    // produce a recursive SNARK
+    println!("Generating a RecursiveSNARK...");
+    let mut recursive_snark: RecursiveSNARK<E1> = RecursiveSNARK::<E1>::new(
+        &pp,
+        &circuit_primary,
+        &circuit_secondary,
+        &z0_primary,
+        &z0_secondary,
+    )
+    .unwrap();
+
+    recursive_snark
+        .prove_step(&pp, &circuit_primary, &circuit_secondary)
+        .unwrap();
+
+    /*
+     * VERIFYING PROOF
+     */
+
+    // verify the recursive SNARK
+    println!("Verifying a RecursiveSNARK...");
+    let res = recursive_snark.verify(&pp, 1, &z0_primary, &z0_secondary);
+    println!("RecursiveSNARK::verify: {:?}", res.is_ok());
+
+    /*
+     * COMPRESS PROOF
+     */
+    println!("Compressing...");
+    let (pk, vk) = CompressedSNARK::<E1, S1, S2>::setup(&pp).unwrap();
+    let snark = CompressedSNARK::prove(&pp, &pk, &recursive_snark).unwrap();
+
+    snark
+        .verify(&vk, recursive_snark.num_steps(), &z0_primary, &z0_secondary)
+        .unwrap();
+
+    /*
+     * RECOVERING SIGNATURE
+     */
+
+    let (signature, _) = res.unwrap();
+    let mut signature_bytes: [u8; 64] = [0; 64];
+    for (i, signature_part) in signature.into_iter().enumerate() {
+        let part: [u8; 32] = signature_part.into();
+        signature_bytes[i * 16..(i + 1) * 16].copy_from_slice(&part[0..16]);
+    }
+    println!("Signature : {:?}", signature_bytes.encode_hex::<String>());
+
+    /*
+     * VERIFYING SIGNATURE
+     */
+
+    let is_valid = verify_signature(&public_key, &signature_bytes, &hash);
+    println!("Signature is valid: {:?}", is_valid);
 }
 
-fn create_key_pair_from_bytes(secret_bytes: &[u8]) -> (SecretKey, PublicKey) {
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(secret_bytes).expect("32 bytes");
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-    (secret_key, public_key)
+fn hash_position(position: &Position) -> Vec<u8> {
+    let payload = serde_json::to_string(&position).expect("JSON serialization");
+    let result = hash_message(&payload);
+    result.to_vec()
 }
 
 fn hash_message(message: &str) -> Box<[u8]> {
@@ -120,20 +147,11 @@ fn hash_message(message: &str) -> Box<[u8]> {
     hasher.finalize().as_slice().into()
 }
 
-fn sign_hash_slice(secret_key: &SecretKey, hash: &[u8]) -> secp256k1::ecdsa::Signature {
-    let message = Message::from_digest_slice(&hash).expect("32 bytes");
-    let secp = Secp256k1::new();
-    secp.sign_ecdsa(&message, &secret_key)
-}
-
-fn verify_signature(
-    public_key: &PublicKey,
-    sig: &secp256k1::ecdsa::Signature,
-    hash: &[u8],
-) -> bool {
+fn verify_signature(public_key: &PublicKey, sig: &[u8], hash: &[u8]) -> bool {
     let secp = Secp256k1::new();
     let message = Message::from_digest_slice(&hash).expect("32 bytes");
-    secp.verify_ecdsa(&message, &sig, &public_key).is_ok()
+    let signature = Signature::from_compact(sig).expect("64 bytes");
+    secp.verify_ecdsa(&message, &signature, &public_key).is_ok()
 }
 
 fn deser_pubkey(pubkey_str: &str) -> PublicKey {

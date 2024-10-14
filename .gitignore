@@ -1,2 +1,5 @@
-/target/
-/out/
+target/
+out/
+device_register/src/libraries/core/
+device_register/src/build/
+device_register/peerDIDDoc.json
