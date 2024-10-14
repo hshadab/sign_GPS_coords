@@ -1,6 +1,8 @@
+use anyhow::Result;
 use hex::{FromHex, ToHex};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::fs;
 use std::time::SystemTime;
 
 use ff::Field;
@@ -29,7 +31,18 @@ type EE2 = ipa_pc::EvaluationEngine<E2>;
 type S1 = ppsnark::RelaxedR1CSSNARK<E1, EE1>;
 type S2 = snark::RelaxedR1CSSNARK<E2, EE2>;
 
-fn main() {
+#[derive(Serialize)]
+struct RegisterDeviceBody {
+    diddoc: String,
+}
+
+#[derive(Deserialize)]
+struct RegisterResult {
+    message: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     // Simulate inputs
     let secret_key_hex = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     let secret_key = hex::decode(secret_key_hex).unwrap();
@@ -133,6 +146,28 @@ fn main() {
 
     let is_valid = verify_signature(&public_key, &signature_bytes, &hash);
     println!("Signature is valid: {:?}", is_valid);
+
+    /*
+     * SENDING TO SERVER
+     */
+
+    let client = reqwest::Client::new();
+
+    let diddoc = fs::read_to_string("./device_register/peerDIDDoc.json").expect("file read");
+    println!("DIDDoc: {}", diddoc);
+
+    let body = RegisterDeviceBody { diddoc };
+    let url = "http://127.0.0.1:3000/register_device";
+    let response = client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body).expect("JSON serialization"))
+        .send()
+        .await?;
+
+    let result: RegisterResult = response.json().await?;
+    println!("Result: {}", result.message);
+    Ok(())
 }
 
 fn hash_position(position: &Position) -> Vec<u8> {

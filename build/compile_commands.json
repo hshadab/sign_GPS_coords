@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/antoine/Documents/projets/Novanet/exampleIoTeX/signDataRust/build",
+  "command": "/usr/bin/cc   -g -o CMakeFiles/add_client.dir/main.c.o -c /home/antoine/Documents/projets/Novanet/exampleIoTeX/signDataRust/main.c",
+  "file": "/home/antoine/Documents/projets/Novanet/exampleIoTeX/signDataRust/main.c",
+  "output": "CMakeFiles/add_client.dir/main.c.o"
+}
+]
