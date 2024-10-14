@@ -42,7 +42,8 @@ async fn register_device(
     let result = Command::new("./add_client/build/add_client")
         .arg(register_device_body.diddoc)
         .output()
-        .expect("failed to execute process");
+        .expect("failed to execute process")
+        .stdout;
 
     println!("Result: {:?}", result);
 
