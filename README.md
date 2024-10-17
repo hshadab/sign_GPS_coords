@@ -70,6 +70,14 @@ This will start a server listening for requests from client
 
 Now from `client` directory:
 
+First we need to register the device to the server:
+
+```
+cargo +nightly run --bin register_device
+```
+
+Once that is done, we can start sending position data to the server:
+
 ```
 cargo +nighlty run
 ```

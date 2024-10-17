@@ -8,7 +8,6 @@
 // Should take as input a json-encoded DIDDoc containing a jwk, and create a file containing the associated public key
 int main(int argc, char **argv)
 {
-    printf("Hello, from add_client!\n");
     if (argc != 2)
     {
         printf("Usage: %s <DIDDoc>\n", argv[0]);

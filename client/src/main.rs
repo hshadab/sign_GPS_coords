@@ -1,5 +1,6 @@
 use anyhow::Result;
-use hex::{FromHex, ToHex};
+use dotenv::dotenv;
+use hex::ToHex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs;
@@ -13,7 +14,7 @@ use zk_engine::nova::{
     CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 
-use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
+use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1, SecretKey};
 use sha2::{self, Digest};
 use zk_engine::precompiles::signing::SigningCircuit;
 
@@ -32,26 +33,30 @@ type S1 = ppsnark::RelaxedR1CSSNARK<E1, EE1>;
 type S2 = snark::RelaxedR1CSSNARK<E2, EE2>;
 
 #[derive(Serialize)]
-struct RegisterDeviceBody {
-    diddoc: String,
+struct SendDataBody {
+    data: Position,
+    snark: CompressedSNARK<E1, S1, S2>,
+    did: String,
 }
 
 #[derive(Deserialize)]
-struct RegisterResult {
+struct SendDataResult {
     message: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenv().ok();
     // Simulate inputs
-    let secret_key_hex = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let secret_key_hex = std::env::var("SECRET_KEY_HEX").expect("SECRET_KEY must be set");
     let secret_key = hex::decode(secret_key_hex).unwrap();
 
     // Generated from the secret_key
-    let public_key_hex = "034646ae5047316b4230d0086c8acec687f00b1cd9d1dc634f6cb358ac0a9a8fff";
-    println!("Public key: {:?}", hex::decode(public_key_hex).unwrap());
-
-    let public_key = deser_pubkey(public_key_hex);
+    let secp = Secp256k1::new();
+    let public_key = SecretKey::from_byte_array(&secret_key.clone().try_into().unwrap())
+        .unwrap()
+        .public_key(&secp);
+    println!("Public key: {:?}", public_key.serialize_uncompressed());
 
     let latitude = 48.8566;
     let longitude = 2.3522;
@@ -127,7 +132,7 @@ async fn main() -> Result<()> {
     let (pk, vk) = CompressedSNARK::<E1, S1, S2>::setup(&pp).unwrap();
     let snark = CompressedSNARK::prove(&pp, &pk, &recursive_snark).unwrap();
 
-    snark
+    let res2 = snark
         .verify(&vk, recursive_snark.num_steps(), &z0_primary, &z0_secondary)
         .unwrap();
 
@@ -135,7 +140,7 @@ async fn main() -> Result<()> {
      * RECOVERING SIGNATURE
      */
 
-    let (signature, _) = res.unwrap();
+    let (signature, _) = res2;
     let mut signature_bytes: [u8; 64] = [0; 64];
     for (i, signature_part) in signature.into_iter().enumerate() {
         let part: [u8; 32] = signature_part.into();
@@ -156,11 +161,20 @@ async fn main() -> Result<()> {
 
     let client = reqwest::Client::new();
 
-    let diddoc = fs::read_to_string("./device_register/peerDIDDoc.json").expect("file read");
-    println!("DIDDoc: {}", diddoc);
+    let diddoc_str = fs::read_to_string("./device_register/peerDIDDoc.json").expect("file read");
+    println!("DIDDoc: {}", diddoc_str);
 
-    let body = RegisterDeviceBody { diddoc };
-    let url = "http://127.0.0.1:3000/register_device";
+    let diddoc_json: serde_json::Value = serde_json::from_str(&diddoc_str).expect("JSON parse");
+
+    let did = diddoc_json["id"].as_str().expect("DID string").to_string();
+    println!("DID: {}", did);
+
+    let body = SendDataBody {
+        data: position,
+        snark,
+        did,
+    };
+    let url = "http://127.0.0.1:3000/send_data";
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -168,7 +182,7 @@ async fn main() -> Result<()> {
         .send()
         .await?;
 
-    let result: RegisterResult = response.json().await?;
+    let result: SendDataResult = response.json().await?;
     println!("Result: {}", result.message);
     Ok(())
 }
@@ -190,8 +204,4 @@ fn verify_signature(public_key: &PublicKey, sig: &[u8], hash: &[u8]) -> bool {
     let message = Message::from_digest_slice(&hash).expect("32 bytes");
     let signature = Signature::from_compact(sig).expect("64 bytes");
     secp.verify_ecdsa(&message, &signature, &public_key).is_ok()
-}
-
-fn deser_pubkey(pubkey_str: &str) -> PublicKey {
-    PublicKey::from_slice(<[u8; 33]>::from_hex(&pubkey_str).unwrap().as_ref()).expect("33 bytes")
 }
