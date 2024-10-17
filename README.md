@@ -1,36 +1,78 @@
-# Example of timestamping and signing GPS coordinates
+# Timestamping and Signing GPS Coordinates with ioConnect SDK and zkEngine Integration
 
-This example shows a rust code that takes gps coordinates in input together with a private key, adds a timestamp to the coordinates, and then signs the object using the private key.
+This project demonstrates a secure client-server system built with Rust, leveraging IoTeX's ioConnect SDK for decentralized identity (DID) management and NovaNet's zkEngine for zero-knowledge proof generation.
+The client collects GPS coordinates, timestamps, and signs them using cryptographic keys. The data is then transmitted with a zero-knowledge proof to the server for trustless verification.
 
-A zero-knowledge proof of the signing is also generated, that can be verified as well.
+## Overview
+
+This system ensures:
+
+- Data authenticity through ECDSA signatures managed with the ioConnect SDK.
+- Privacy-preserving data integrity and computational correctness using zk-SNARKs from NovaNet’s zkEngine.
+- Decentralized Identity Management via DIDs and DID Documents (DIDDocs) using the ioConnect SDK.
+- Secure transmission of GPS data and proofs over the network, with both client and server ensuring trust through cryptographic protocols.
+
+# How it works
+
+## Client Side:
+
+First of all, the client generates a DIDDoc using it's secret key, and sends it to the server to registrate.
+
+The client can then send its position with a timestamp with the following workflow:
+
+- The client collects GPS data and timestamps it.
+- It signs the data in a ZK circuit, using the secret key associated to the DIDDoc.
+- The client then generates a zk-SNARK proof of the signed data using NovaNet’s zkEngine.
+- The proof, together with the position object and device DID is then sent to the server.
+
+## Server Side:
+
+The server first uses the ioConnect SDK to process the received DIDDoc to register the client
+
+Then on receiving clients position, the server processes the following steps:
+
+- It verifies the sender is registered to the service by checking the device DID, and recovers the associated public key.
+- It then verifies that the proof is valid and corresponds to a correct execution of the circuit.
+- The signature is then retrieved from the proof, and verified using the public key.
+- If verification succeeds, the server sends a success response. Otherwise, it returns an error.
+
+# Project structure
+
+- `/client` where all the client actions are developped, it is composed of:
+  - `/device_register` which handles the interactions with ioConnect SDK to create the DIDDoc.
+  - `/src` where the different executables are located
+- `/server` where the server is setup, composed of:
+  - `/src` where the executable is located
+  - `/did_mapping` where the registered devices are stored
 
 # Get started
 
 ## Setting up client
 
-First get to `/client` directory:
+Navigate to the `/client` directory:
 
 ```
 cd client
 ```
 
-### Device register
+Create a `.env` file to store the private key, as a 64-characters hexadecimal string, corresponding to a 32-bytes secret key.
 
-in `/client`, create a `.env` file and set the `SECRET_KEY_HEX` variable, as a 64-characters hexadecimal string, corresponding to a 32-bytes secret key.
+```
+# .env
+SECRET_KEY_HEX=<your secret key in hex>
+```
 
-Copy `core` directory from `device_register/ioConnect` to `device_register/src`.
+1. Device register
+
+Copy the `core` directory from `device_register/ioConnect` to `device_register/src`.
 
 in `device_register/src/core/src/include/config`, remove `autoconfig.h` and rename `autoconfig_linux.h` to `autoconfig.h`
 
-```
-cd device_register/src
-```
+Then build the executable that will generate the DID and DIDDoc used to registed the device:
 
 ```
-mkdir build && cd build
-```
-
-```
+cd device_register/src && \
+mkdir build && cd build && \
 cmake .. && make && ./DIDComm_server
 ```
 
@@ -38,7 +80,7 @@ Running `./DIDComm_Server` creates a DIDDoc using our secret key and stores it i
 
 ## Setting up server
 
-From project root:
+From project root, get to the `add_client` directory:
 
 ```
 cd server/add_client
@@ -49,26 +91,29 @@ Create a `libraries` directory, and in there also copy `core` directory from `io
 then:
 
 ```
-mkdir build && cd build
-```
-
-```
+mkdir build && cd build && \
 cmake .. && make
 ```
 
-This will create a `./add_client` executable in `build`, which will be used later by `/server/src/main.rs`.
+This will create a `./add_client` executable which will be used later by the server to register devices.
 
-## Starting demo
+Now that the setup is done, we will walk through running the example
+
+# Starting demo
+
+## Starting the server
 
 From `server` directory:
 
 ```
-cargo run
+cargo +nightly run
 ```
 
-This will start a server listening for requests from client
+The server will start listening on `127.0.0.1:3000`
 
-Now from `client` directory:
+## Running the client's functions
+
+From `client` directory:
 
 First we need to register the device to the server:
 
@@ -81,5 +126,3 @@ Once that is done, we can start sending position data to the server:
 ```
 cargo +nighlty run
 ```
-
-This will prove signing the object, and then send (for now) just the DIDDoc generated in `Setting up client` to the server
